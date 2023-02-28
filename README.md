@@ -53,6 +53,37 @@ overlaps['j'] = rgi6['RGIId'].iloc[overlaps['j']].values
 overlaps.to_parquet('rgi7_rgi6_overlaps.parquet')
 ```
 
+Resolve RGI7 self overlaps.
+
+```py
+import geopandas as gpd
+import helpers
+import pyproj
+
+overlaps = gpd.read_parquet('rgi7_self_overlaps.parquet')
+rgi7 = (
+  gpd.read_parquet('rgi7.parquet', columns=['geometry', 'rgi_id'])
+  .set_index('rgi_id')
+)
+
+# --- Resolve RGI7 self overlaps
+resolved = helpers.resolve_self_overlaps(
+  overlaps=overlaps,
+  geoms=rgi7.geometry,
+  min_area=1e5,
+  transformer=pyproj.Transformer.from_crs(
+    'EPSG:4326', {'proj': 'cea'}, always_xy=True
+  )
+)
+resolved.reset_index(name='geometry').to_parquet('rgi7_fixes.parquet')
+
+# --- Confirm that remaining overlaps are rounding artifacts
+rgi7.geometry[resolved.index] = resolved
+remaining = helpers.compute_self_overlaps(rgi7.geometry)
+assert remaining['area'].lt(1e-16).all()
+```
+
+
 Further inspect RGI7-RGI7 overlaps.
 
 ```py

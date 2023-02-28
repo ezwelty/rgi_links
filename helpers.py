@@ -1,4 +1,4 @@
-from typing import Union
+from typing import List, Union
 from pathlib import Path
 import re
 import urllib.request
@@ -6,6 +6,7 @@ import zipfile
 
 import geopandas as gpd
 import pandas as pd
+import pyproj
 import shapely
 import shapely.geometry
 import shapely.ops
@@ -111,6 +112,36 @@ def polygonize(
   return shapely.MultiPolygon(geoms)
 
 
+def split_and_filter_polygons(
+  geom: Union[shapely.Polygon, shapely.MultiPolygon],
+  min_area: float = 1e5,
+  transformer: pyproj.Transformer = None
+) -> List[shapely.Polygon]:
+  """
+  Split multipolygons into polygons and drop small polygons.
+
+  Parameters
+  ----------
+  geom
+    Polygon geometry.
+  min_area
+    Minimum area in square meters of multipolygon parts.
+  transformer:
+    Coordinate transformer to apply to compute area in square meters.
+  """
+  if transformer:
+    geom_area = shapely.ops.transform(transformer.transform, geom)
+  else:
+    geom_area = geom
+  if isinstance(geom, shapely.MultiPolygon):
+    return [
+      g for g, ga in zip(geom.geoms, geom_area.geoms) if ga.area > min_area
+    ]
+  if geom_area.area > min_area:
+    return [geom]
+  return []
+
+
 def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
   """
   Compute overlaps between pairs of input geometries.
@@ -204,3 +235,72 @@ def compute_cross_overlaps(
       'geometry': overlap
     })
   return gpd.GeoDataFrame(overlaps, crs=x.crs)
+
+
+def resolve_self_overlaps(
+  overlaps: gpd.GeoDataFrame,
+  geoms: gpd.GeoSeries,
+  min_area: float = 1e5,
+  transformer: pyproj.Transformer = None
+) -> gpd.GeoSeries:
+  """
+  Resolves overlaps by differencing the overlap from one of the polygons.
+
+  The polygon is chosen such that differencing results in the smallest total
+  boundary length, unless this results in a multipolygon.
+  Fixes are applied iteratively, since the same polygon may be involved in
+  multiple overlaps.
+
+  The modified polygons are returned with an index matching `geoms`.
+
+  Parameters
+  ----------
+  overlaps
+    Overlaps in the format returned by :func:`compute_self_overlaps`.
+  geoms
+    Original geometries with index matching columns `i` and `j` of `overlaps`.
+  min_area
+    Minimum area in square meters of multipolygon parts.
+  transformer:
+    Coordinate transformer to apply to compute area in square meters.
+
+  Raises
+  ------
+  ValueError
+    Failed to resolve overlap
+  """
+  fixed = {}
+  for counter, row in enumerate(overlaps.to_dict(orient='records')):
+    print(f'[{len(overlaps) - 1}] {counter}', end='\r', flush=True)
+    gi = [row['i'], row['j']]
+    g = [fixed[i] if i in fixed else geoms[i] for i in gi]
+    # Differemce overlap from each geometry
+    d = (
+      polygonize(g[0].difference(row['geometry'])),
+      polygonize(g[1].difference(row['geometry']))
+    )
+    # Choose difference that minimizes total perimeter
+    first_choice = int(
+      (d[0].boundary.length + g[1].boundary.length) >
+      (g[0].boundary.length + d[1].boundary.length)
+    )
+    fixed_geom = None
+    for choice in (first_choice, int(not first_choice)):
+      if isinstance(d[choice], shapely.MultiPolygon):
+        polygons = split_and_filter_polygons(
+          d[choice], min_area=min_area, transformer=transformer
+        )
+        if len(polygons) == 1:
+          fixed_geom = polygons[0]
+          break
+      else:
+        # Keep single polygons smaller than limit
+        fixed_geom = d[choice]
+        break
+    if fixed_geom:
+      fixed[gi[choice]] = fixed_geom
+    else:
+      raise ValueError(f'Failed to resolve overlap of {gi} (#{counter})')
+  return gpd.GeoSeries(
+    fixed.values(), index=pd.Index(fixed.keys(), name=geoms.index.name)
+  )
