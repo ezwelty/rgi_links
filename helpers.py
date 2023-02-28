@@ -1,3 +1,4 @@
+from typing import Union
 from pathlib import Path
 import re
 import urllib.request
@@ -6,6 +7,8 @@ import zipfile
 import geopandas as gpd
 import pandas as pd
 import shapely
+import shapely.geometry
+import shapely.ops
 
 
 def load_rgi6_outlines(
@@ -84,6 +87,30 @@ def load_rgi7_outlines(path: str = '.') -> gpd.GeoDataFrame:
   return gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs=gdfs[0].crs)
 
 
+def polygonize(
+  geom: shapely.geometry.base.BaseGeometry
+) -> Union[shapely.Polygon, shapely.MultiPolygon]:
+  """
+  Convert geometry to (Multi)Polygon, removing all zero-area components.
+
+  Raises
+  ------
+  ValueError: Geometry has zero area.
+  """
+  try:
+    # Remove zero-area children
+    geoms = [x for x in geom.geoms if x.area]
+  except AttributeError:
+    if geom.area:
+      return geom
+    raise ValueError('Geometry has zero area')
+  if not geoms:
+    raise ValueError('Geometry has zero area')
+  if len(geoms) == 1:
+      return geoms[0]
+  return shapely.MultiPolygon(geoms)
+
+
 def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
   """
   Compute overlaps between pairs of input geometries.
@@ -114,15 +141,18 @@ def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
     print(f'[{len(pairs)}] {counter}', end='\r', flush=True)
     if i != j:
       overlap = gs.iloc[i].intersection(gs.iloc[j])
-      if overlap.area > 0:
-        overlaps.append({
-          'i': i,
-          'j': j,
-          'i_area_fraction': overlap.area / gs.iloc[i].area,
-          'j_area_fraction': overlap.area / gs.iloc[j].area,
-          'area': overlap.area,
-          'geometry': overlap
-        })
+      try:
+        overlap = polygonize(overlap)
+      except ValueError:
+        continue
+      overlaps.append({
+        'i': i,
+        'j': j,
+        'i_area_fraction': overlap.area / gs.iloc[i].area,
+        'j_area_fraction': overlap.area / gs.iloc[j].area,
+        'area': overlap.area,
+        'geometry': overlap
+      })
   return gpd.GeoDataFrame(overlaps, crs=gs.crs)
 
 
@@ -161,13 +191,16 @@ def compute_cross_overlaps(
   for counter, (i, j) in enumerate(pairs, start=1):
     print(f'[{len(pairs)}] {counter}', end='\r', flush=True)
     overlap = x.iloc[i].intersection(y.iloc[j])
-    if overlap.area > 0:
-      overlaps.append({
-        'i': i,
-        'j': j,
-        'i_area_fraction': overlap.area / x.iloc[i].area,
-        'j_area_fraction': overlap.area / y.iloc[j].area,
-        'area': overlap.area,
-        'geometry': overlap
-      })
+    try:
+      overlap = polygonize(overlap)
+    except ValueError:
+      continue
+    overlaps.append({
+      'i': i,
+      'j': j,
+      'i_area_fraction': overlap.area / x.iloc[i].area,
+      'j_area_fraction': overlap.area / y.iloc[j].area,
+      'area': overlap.area,
+      'geometry': overlap
+    })
   return gpd.GeoDataFrame(overlaps, crs=x.crs)

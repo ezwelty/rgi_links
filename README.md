@@ -39,7 +39,7 @@ import helpers
 
 rgi7 = gpd.read_parquet('rgi7.parquet', columns=['geometry', 'rgi_id'])
 
-# --- Compute RGI7 self overlaps (~ 83 s)
+# --- Compute RGI7 self overlaps (~ 95 s)
 overlaps = helpers.compute_self_overlaps(rgi7.geometry)
 overlaps['i'] = rgi7['rgi_id'].iloc[overlaps['i']].values
 overlaps['j'] = rgi7['rgi_id'].iloc[overlaps['j']].values
