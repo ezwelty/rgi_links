@@ -151,7 +151,6 @@ def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
   * i, j: Integer indices of the overlapping geometries.
   * i_area_fraction, j_area_fraction: Area of the overlap divided by the area of
     the i and j geometry, respectively.
-  * area: Area of overlap (in coordinate system units).
   * geometry: Geometry of overlap.
 
   Parameters
@@ -181,7 +180,6 @@ def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
         'j': j,
         'i_area_fraction': overlap.area / gs.iloc[i].area,
         'j_area_fraction': overlap.area / gs.iloc[j].area,
-        'area': overlap.area,
         'geometry': overlap
       })
   return gpd.GeoDataFrame(overlaps, crs=gs.crs)
@@ -200,7 +198,6 @@ def compute_cross_overlaps(
   * j: Integer index of the geometry from y.
   * i_area_fraction, j_area_fraction: Area of the overlap divided by the area of
     the i and j geometry, respectively.
-  * area: Area of overlap (in coordinate system units).
   * geometry: Geometry of overlap.
 
   Parameters
@@ -231,7 +228,6 @@ def compute_cross_overlaps(
       'j': j,
       'i_area_fraction': overlap.area / x.iloc[i].area,
       'j_area_fraction': overlap.area / y.iloc[j].area,
-      'area': overlap.area,
       'geometry': overlap
     })
   return gpd.GeoDataFrame(overlaps, crs=x.crs)

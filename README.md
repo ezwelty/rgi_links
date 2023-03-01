@@ -36,22 +36,28 @@ rgi7.to_parquet('rgi7.parquet')
 ### Compute overlaps
 
 Read RGI6 and RGI7 outlines, compute overlaps, and write the results.
+Overlap polygons and the area fractions are computed with geographic coordinates
+(computing the latter with projected coordinates had maximum 0.4% error),
+but the overlap areas are computed in square meters with projected coordinates.
 
 ```py
 import geopandas as gpd
 import helpers
 
 rgi7 = gpd.read_parquet('rgi7.parquet', columns=['geometry', 'rgi_id'])
+equal_area_crs = {'proj': 'cea'}
 
-# --- Compute RGI7 self overlaps (~ 95 s)
+# --- Compute RGI7 self overlaps (~ 100 s)
 overlaps = helpers.compute_self_overlaps(rgi7.geometry)
+overlaps['area'] = overlaps['geometry'].to_crs(equal_area_crs).area
 overlaps['i'] = rgi7['rgi_id'].iloc[overlaps['i']].values
 overlaps['j'] = rgi7['rgi_id'].iloc[overlaps['j']].values
 overlaps.to_parquet('rgi7_self_overlaps.parquet')
 
-# --- Compute RGI7-RGI6 overlaps (~ 605 s)
+# --- Compute RGI7-RGI6 overlaps (~ 400 s)
 rgi6 = gpd.read_parquet('rgi6.parquet', columns=['geometry', 'RGIId'])
 overlaps = helpers.compute_cross_overlaps(rgi7.geometry, rgi6.geometry)
+overlaps['area'] = overlaps['geometry'].to_crs(equal_area_crs).area
 overlaps['i'] = rgi7['rgi_id'].iloc[overlaps['i']].values
 overlaps['j'] = rgi6['RGIId'].iloc[overlaps['j']].values
 overlaps.to_parquet('rgi7_rgi6_overlaps.parquet')
