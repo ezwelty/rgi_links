@@ -80,7 +80,7 @@ rgi7 = (
 resolved = helpers.resolve_self_overlaps(
   overlaps=overlaps,
   geoms=rgi7.geometry,
-  min_area=1e5,
+  min_area=1e4,
   transformer=pyproj.Transformer.from_crs(
     'EPSG:4326', {'proj': 'cea'}, always_xy=True
   )
@@ -90,7 +90,7 @@ resolved.reset_index(name='geometry').to_parquet('rgi7_fixes.parquet')
 # --- Confirm that remaining overlaps are rounding artifacts
 rgi7.geometry[resolved.index] = resolved
 remaining = helpers.compute_self_overlaps(rgi7.geometry)
-assert remaining['area'].lt(1e-16).all()
+assert remaining['geometry'].to_crs({'proj': 'cea'}).area.lt(1e-6).all()
 ```
 
 ### Inspect RGI7-RGI6 overlaps
