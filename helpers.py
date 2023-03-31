@@ -114,7 +114,7 @@ def polygonize(
 
 def split_and_filter_polygons(
   geom: Union[shapely.Polygon, shapely.MultiPolygon],
-  min_area: float = 1e5,
+  min_area: float = 9500,
   transformer: pyproj.Transformer = None
 ) -> List[shapely.Polygon]:
   """
@@ -236,7 +236,7 @@ def compute_cross_overlaps(
 def resolve_self_overlaps(
   overlaps: gpd.GeoDataFrame,
   geoms: gpd.GeoSeries,
-  min_area: float = 1e5,
+  min_area: float = 9500,
   transformer: pyproj.Transformer = None
 ) -> gpd.GeoSeries:
   """
