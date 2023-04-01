@@ -1,10 +1,11 @@
-from typing import List, Union
+from typing import Iterable, List, Tuple, Union
 from pathlib import Path
 import re
 import urllib.request
 import zipfile
 
 import geopandas as gpd
+import networkx
 import pandas as pd
 import pyproj
 import shapely
@@ -300,3 +301,163 @@ def resolve_self_overlaps(
   return gpd.GeoSeries(
     fixed.values(), index=pd.Index(fixed.keys(), name=geoms.index.name)
   )
+
+
+def _validate_pairs(
+  x: Iterable,
+  y: Iterable
+) -> Tuple[pd.Series, pd.Series]:
+  # Cast to Series, avoiding
+  pairs = tuple(pd.Series(s, copy=False) for s in (x, y))
+  if pairs[0].size != pairs[1].size:
+    raise ValueError('Pair indices have unequal length')
+  if not pairs[0].index.equals(pairs[1].index):
+    raise ValueError('Pair indices have unequal row index')
+  if any(s.isnull().any() for s in pairs):
+    raise ValueError('Pair indices contain null values')
+  return pairs
+
+
+def count_pair_relations(
+  x: Iterable,
+  y: Iterable
+) -> Tuple[pd.Series, pd.Series]:
+  """
+  Count the number of records associated with each pairwise relation.
+
+  For each pair between two groups,
+  returns the total number of (directly) related records from each group.
+  For example:
+
+  * A|1 (1:1)
+  * A|1, A|2 (1:2)
+  * A|1, B|1 (2:1)
+  * A|1, B|1, B|2, C|2 (2:2)
+  * A|1, B|1, B|2, C|2, C|3 (2:2 chain of A,B|1,2 and B,C|2,3)
+
+  Parameters
+  ----------
+  x
+    Indices of first group.
+  y
+    Indices of second group.
+
+  Raises
+  ------
+  ValueError
+    Pair indices have unequal length
+  ValueError
+    Pair indices have unequal row index (if provided as pandas.Series)
+  ValueError
+    Pair indices contain null values
+
+  Examples
+  -------
+  One-to-one and one-many relationships.
+
+  * A|1 (1:1)
+  * B|2, B|3 (1:2)
+  * C|4, D|4 (2:1)
+
+  >>> xn, yn = count_pair_relations(['A', 'B', 'B', 'C', 'D'], [1, 2, 3, 4, 4])
+  >>> xn.astype(str) + ':' + yn.astype(str)
+  0    1:1
+  1    1:2
+  2    1:2
+  3    2:1
+  4    2:1
+  dtype: object
+
+  Many-many relationships.
+
+  * A|1, B|1, B|2, C|2, D|2
+
+  >>> xn, yn = count_pair_relations(['A', 'B', 'B', 'C', 'D'], [1, 1, 2, 2, 2])
+  >>> xn.astype(str) + ':' + yn.astype(str)
+  0    2:2
+  1    3:2
+  2    3:2
+  3    3:2
+  4    3:2
+  dtype: object
+
+  A|1 is 2:2 because A,B are related to 1,2 (A -> 1 -> A,B -> 1,2).
+  All others are 3:2 because B,C,D are related to 1,2.
+  """
+  pairs = _validate_pairs(x, y)
+  # For each column, count the occurences of each id
+  counts = [s.groupby(s).transform('count') for s in pairs]
+  # For each id in a column, find the maximum count in the other column
+  return tuple(
+    count.groupby(index).transform('max')
+    for index, count in zip(pairs, counts[::-1])
+  )
+
+
+def label_pair_clusters(
+  x: Iterable,
+  y: Iterable
+) -> pd.Series:
+  """
+  Label clusters of pairwise relations.
+
+  For each pair, returns an integer index that groups the pair to all other
+  pairs to which it is directly or indirectly related.
+
+  Parameters
+  ----------
+  x
+    Indices of first group.
+  y
+    Indices of second group.
+
+  Raises
+  ------
+  ValueError
+    Pair indices have unequal length
+  ValueError
+    Pair indices have unequal row index (if provided as pandas.Series)
+  ValueError
+    Pair indices contain null values
+
+  Examples
+  -------
+  One-to-one and one-many relationships.
+
+  * A|1 (1:1)
+  * B|2, B|3 (1:2)
+  * C|4, D|4 (2:1)
+
+  >>> label_pair_clusters(['A', 'B', 'B', 'C', 'D'], [1, 2, 3, 4, 4])
+  0    0
+  1    1
+  2    1
+  3    2
+  4    2
+  dtype: int64
+
+  Many-many relationships.
+
+  * A|1, B|1, B|2, C|2, D|2
+
+  >>> label_pair_clusters(['A', 'B', 'B', 'C', 'D'], [1, 1, 2, 2, 2])
+  0    0
+  1    0
+  2    0
+  3    0
+  4    0
+  dtype: int64
+  """
+  pairs = _validate_pairs(x, y)
+  # Ensure ids are globally unique
+  if pairs[0].isin(pairs[1]).any():
+    pairs = tuple(pd.factorize(s)[0] for s in pairs)
+    pairs[1] += pairs[0].max() + 1
+  # Build undirected network from pairs
+  graph = networkx.Graph()
+  graph.add_edges_from(zip(*pairs))
+  # Assign pairs to clusters
+  cluster_ids = {}
+  for i, cluster in enumerate(networkx.connected_components(graph)):
+    cluster_ids.update({key: i for key in cluster})
+  return pairs[0].map(cluster_ids)

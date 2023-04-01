@@ -60,6 +60,12 @@ overlaps = helpers.compute_cross_overlaps(rgi7.geometry, rgi6.geometry)
 overlaps['area'] = overlaps['geometry'].to_crs(equal_area_crs).area
 overlaps['i'] = rgi7['rgi_id'].iloc[overlaps['i']].values
 overlaps['j'] = rgi6['RGIId'].iloc[overlaps['j']].values
+# Count number of direct relatives (i.e. 1:1, n:1, 1:n, n:n)
+overlaps['in'], overlaps['jn'] = helpers.count_pair_relations(
+  overlaps['i'], overlaps['j']
+)
+# Label clusters of (directly and indirectly-related) pairs
+overlaps['cluster'] = helpers.label_pair_clusters(overlaps['i'], overlaps['j'])
 overlaps.to_parquet('rgi7_rgi6_overlaps.parquet')
 ```
 
