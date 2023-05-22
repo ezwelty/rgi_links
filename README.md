@@ -62,7 +62,7 @@ equal_area_crs = {'proj': 'cea'}
 overlaps['area'] = overlaps['geometry'].to_crs(equal_area_crs).area
 
 # ---- Filter by minimum area
-overlaps = overlaps[overlaps['area'] > 200]
+overlaps = overlaps[overlaps['area'] > 200].copy()
 
 # ---- Calculate relationships
 # Count number of direct relatives (i.e. 1:1, n:1, 1:n, n:n)
