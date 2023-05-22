@@ -6,3 +6,5 @@ dependencies:
   - geopandas=0.12
   - shapely=2.0
   - pyarrow=11
+  - black=23
+  - pre-commit=3
