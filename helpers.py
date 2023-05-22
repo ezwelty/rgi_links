@@ -183,7 +183,9 @@ def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
         'j_area_fraction': overlap.area / gs.iloc[j].area,
         'geometry': overlap
       })
-  return gpd.GeoDataFrame(overlaps, crs=gs.crs)
+  # Return same columns even if empty
+  columns = ['i', 'j', 'i_area_fraction', 'j_area_fraction', 'geometry']
+  return gpd.GeoDataFrame(overlaps, columns=columns, crs=gs.crs)
 
 
 def compute_cross_overlaps(
@@ -231,7 +233,9 @@ def compute_cross_overlaps(
       'j_area_fraction': overlap.area / y.iloc[j].area,
       'geometry': overlap
     })
-  return gpd.GeoDataFrame(overlaps, crs=x.crs)
+  # Return same columns even if empty
+  columns = ['i', 'j', 'i_area_fraction', 'j_area_fraction', 'geometry']
+  return gpd.GeoDataFrame(overlaps, columns=columns, crs=x.crs)
 
 
 def resolve_self_overlaps(
