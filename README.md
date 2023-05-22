@@ -19,7 +19,7 @@ conda activate rgi
 python
 ```
 
-### Prepare outlines
+### Prepare RGI outlines
 
 Load RGI6 and RGI7 outlines and write them to parquet for fast read access.
 
@@ -33,7 +33,7 @@ rgi7 = helpers.load_rgi7_outlines(path='rgi7')
 rgi7.to_parquet('rgi7.parquet')
 ```
 
-### Compute overlaps
+### Compute RGI7-RGI6 overlaps
 
 Read RGI6 and RGI7 outlines, compute overlaps, and write the results.
 Overlap polygons and the area fractions are computed with geographic coordinates
@@ -131,7 +131,7 @@ rgi6_ids = pd.read_parquet('rgi6.parquet', columns=['RGIId'])['RGIId']
 pd.Index(rgi6_ids).difference(overlaps['j'])
 ```
 
-### Compute and fix RGI7 self overlaps
+### Compute and fix RGI7 self-overlaps
 
 ```py
 import geopandas as gpd
