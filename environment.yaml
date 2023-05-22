@@ -8,3 +8,4 @@ dependencies:
   - pyarrow=11
   - black=23
   - pre-commit=3
+  - pytest=7.3
