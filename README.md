@@ -40,26 +40,31 @@ Overlap polygons and the area fractions are computed with geographic coordinates
 (computing the latter with projected coordinates had maximum 0.4% error),
 but the overlap areas are computed in square meters with projected coordinates.
 
+Overlaps smaller than 200 m<sup>2</sup> are dropped.
+See https://github.com/ezwelty/rgi_links/issues/6 for how this number was chosen.
+
 ```py
 import geopandas as gpd
+import numpy as np
+import scipy.interpolate
 import helpers
 
+rgi6 = gpd.read_parquet('rgi6.parquet', columns=['geometry', 'RGIId'])
 rgi7 = gpd.read_parquet('rgi7.parquet', columns=['geometry', 'rgi_id'])
-equal_area_crs = {'proj': 'cea'}
-
-# --- Compute RGI7 self overlaps (~ 100 s)
-overlaps = helpers.compute_self_overlaps(rgi7.geometry)
-overlaps['area'] = overlaps['geometry'].to_crs(equal_area_crs).area
-overlaps['i'] = rgi7['rgi_id'].iloc[overlaps['i']].values
-overlaps['j'] = rgi7['rgi_id'].iloc[overlaps['j']].values
-overlaps.to_parquet('rgi7_self_overlaps.parquet')
 
 # --- Compute RGI7-RGI6 overlaps (~ 400 s)
-rgi6 = gpd.read_parquet('rgi6.parquet', columns=['geometry', 'RGIId'])
 overlaps = helpers.compute_cross_overlaps(rgi7.geometry, rgi6.geometry)
-overlaps['area'] = overlaps['geometry'].to_crs(equal_area_crs).area
 overlaps['i'] = rgi7['rgi_id'].iloc[overlaps['i']].values
 overlaps['j'] = rgi6['RGIId'].iloc[overlaps['j']].values
+
+# ---- Calculate area
+equal_area_crs = {'proj': 'cea'}
+overlaps['area'] = overlaps['geometry'].to_crs(equal_area_crs).area
+
+# ---- Filter by minimum area
+overlaps = overlaps[overlaps['area'] > 200]
+
+# ---- Calculate relationships
 # Count number of direct relatives (i.e. 1:1, n:1, 1:n, n:n)
 overlaps['in'], overlaps['jn'] = helpers.count_pair_relations(
   overlaps['i'], overlaps['j']
@@ -67,36 +72,6 @@ overlaps['in'], overlaps['jn'] = helpers.count_pair_relations(
 # Label clusters of (directly and indirectly-related) pairs
 overlaps['cluster'] = helpers.label_pair_clusters(overlaps['i'], overlaps['j'])
 overlaps.to_parquet('rgi7_rgi6_overlaps.parquet')
-```
-
-### Fix RGI7 self overlaps
-
-```py
-import geopandas as gpd
-import helpers
-import pyproj
-
-overlaps = gpd.read_parquet('rgi7_self_overlaps.parquet')
-rgi7 = (
-  gpd.read_parquet('rgi7.parquet', columns=['geometry', 'rgi_id'])
-  .set_index('rgi_id')
-)
-
-# --- Resolve RGI7 self overlaps
-resolved = helpers.resolve_self_overlaps(
-  overlaps=overlaps,
-  geoms=rgi7.geometry,
-  min_area=1e4,
-  transformer=pyproj.Transformer.from_crs(
-    'EPSG:4326', {'proj': 'cea'}, always_xy=True
-  )
-)
-resolved.reset_index(name='geometry').to_parquet('rgi7_fixes.parquet')
-
-# --- Confirm that remaining overlaps are rounding artifacts
-rgi7.geometry[resolved.index] = resolved
-remaining = helpers.compute_self_overlaps(rgi7.geometry)
-assert remaining['geometry'].to_crs({'proj': 'cea'}).area.lt(1e-6).all()
 ```
 
 ### Inspect RGI7-RGI6 overlaps
@@ -119,43 +94,74 @@ overlaps['max_area_fraction'] = (
   overlaps[['i_area_fraction', 'j_area_fraction']].max(axis=1)
 )
 
-# --- Total (380998)
+# --- Total
 overlaps
-# Max area fraction < 0.05 (127936)
+# Max area fraction < 0.05
 overlaps[overlaps['max_area_fraction'].lt(0.05)]
 
-# --- 1:1 RGI7:RGI6 (103840)
-is_unique = (
-  ~overlaps['i'].duplicated(keep=False) &
-  ~overlaps['j'].duplicated(keep=False)
-)
-overlaps[is_unique].sort_values('i_area_fraction')
-# Min area fraction < 0.5 (6221)
+# --- 1:1 RGI7:RGI6
+is_unique = overlaps['in'].eq(1) & overlaps['jn'].eq(1)
+# Min area fraction < 0.5
 overlaps[is_unique & overlaps['min_area_fraction'].lt(0.5)]
-# Max area fraction < 0.5 (591)
+# Max area fraction < 0.5
 overlaps[is_unique & overlaps['max_area_fraction'].lt(0.5)]
 
-# --- 1:N RGI7:RGI6 (81192 RGI7)
+# --- 1:N RGI7:RGI6
 has_multiple = overlaps.groupby('i')['j'].count().gt(1)
 overlaps[overlaps['i'].isin(has_multiple[has_multiple].index)]
-# RGI7 area fraction > 0.1 (12586 RGI7)
+# RGI7 area fraction > 0.1
 mask = overlaps['i_area_fraction'].gt(0.1)
 has_multiple = overlaps[mask].groupby('i')['j'].count().gt(1)
 overlaps[overlaps['i'].isin(has_multiple[has_multiple].index)]
 
-# --- N:1 RGI7:RGI6 (81744 RGI6)
+# --- N:1 RGI7:RGI6
 has_multiple = overlaps.groupby('j')['i'].count().gt(1)
 overlaps[overlaps['j'].isin(has_multiple[has_multiple].index)]
-# RGI6 area fraction > 0.1 (15740 RGI6)
+# RGI6 area fraction > 0.1
 mask = overlaps['j_area_fraction'].gt(0.1)
 has_multiple = overlaps[mask].groupby('j')['i'].count().gt(1)
 overlaps[overlaps['j'].isin(has_multiple[has_multiple].index)]
 
-# --- 1:0 RGI7:RGI6 (51893)
-rgi7_ids = pd.read_parquet('rgi7.parquet', columns=['rgi_id']).iloc[:, 0]
+# --- 1:0 RGI7:RGI6
+rgi7_ids = pd.read_parquet('rgi7.parquet', columns=['rgi_id'])['rgi_id']
 pd.Index(rgi7_ids).difference(overlaps['i'])
 
-# --- 0:1 RGI7:RGI6 (11466)
-rgi6_ids = pd.read_parquet('rgi6.parquet', columns=['RGIId']).iloc[:, 0]
+# --- 0:1 RGI7:RGI6
+rgi6_ids = pd.read_parquet('rgi6.parquet', columns=['RGIId'])['RGIId']
 pd.Index(rgi6_ids).difference(overlaps['j'])
+```
+
+### Compute and fix RGI7 self overlaps
+
+```py
+import geopandas as gpd
+import helpers
+import pyproj
+
+rgi7 = gpd.read_parquet('rgi7.parquet', columns=['geometry', 'rgi_id'])
+equal_area_crs = {'proj': 'cea'}
+
+# --- Compute RGI7 self overlaps (~ 100 s)
+overlaps = helpers.compute_self_overlaps(rgi7.geometry)
+overlaps['area'] = overlaps['geometry'].to_crs(equal_area_crs).area
+overlaps['i'] = rgi7['rgi_id'].iloc[overlaps['i']].values
+overlaps['j'] = rgi7['rgi_id'].iloc[overlaps['j']].values
+overlaps.to_parquet('rgi7_self_overlaps.parquet')
+
+# --- Resolve RGI7 self overlaps
+rgi7 = rgi7.set_index('rgi_id')
+resolved = helpers.resolve_self_overlaps(
+  overlaps=overlaps,
+  geoms=rgi7.geometry,
+  min_area=9500,
+  transformer=pyproj.Transformer.from_crs(
+    'EPSG:4326', {'proj': 'cea'}, always_xy=True
+  )
+)
+resolved.reset_index(name='geometry').to_parquet('rgi7_fixes.parquet')
+
+# --- Confirm that remaining overlaps are rounding artifacts
+rgi7.geometry[resolved.index] = resolved
+remaining = helpers.compute_self_overlaps(rgi7.geometry)
+assert remaining['geometry'].to_crs({'proj': 'cea'}).area.lt(1e-6).all()
 ```
