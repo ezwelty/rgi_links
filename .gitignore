@@ -1,2 +1,11 @@
 .vscode
 .idea
+.pytest_cache
+__pycache__
+.DS_Store
+
+# Data files
+*.parquet
+rgi6
+rgi7
+nsidc0770_00.rgi60.complete.zip
