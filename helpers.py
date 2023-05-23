@@ -186,7 +186,7 @@ def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
     # Compute pairwise overlap and report those with non-zero overlap
     print("Computing overlap of intersecting pairs")
     overlaps = []
-    for counter, (i, j) in enumerate(pairs, start=1):
+    for counter, (i, j) in enumerate(pairs):
         _print_progress(counter, len(pairs))
         if i != j:
             overlap = gs.iloc[i].intersection(gs.iloc[j])
