@@ -13,6 +13,23 @@ import shapely.geometry
 import shapely.ops
 
 
+def _print_progress(index: int, n: int, interval: int = 10) -> None:
+    """
+    Print progress.
+
+    Parameters
+    ----------
+    index
+        Current index (0-based). Printed as a count (1-based).
+    n
+        Total count.
+    interval
+        How often to print. Last count (`n`) is always printed.
+    """
+    if index % interval == 0 or index == (n - 1):
+        print(f"[{n}] {index + 1}", end="\r", flush=True)
+
+
 def load_rgi6_outlines(
     path: str = "nsidc0770_00.rgi60.complete.zip",
 ) -> gpd.GeoDataFrame:
@@ -170,7 +187,7 @@ def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
     print("Computing overlap of intersecting pairs")
     overlaps = []
     for counter, (i, j) in enumerate(pairs, start=1):
-        print(f"[{len(pairs)}] {counter}", end="\r", flush=True)
+        _print_progress(counter, len(pairs))
         if i != j:
             overlap = gs.iloc[i].intersection(gs.iloc[j])
             try:
@@ -219,8 +236,8 @@ def compute_cross_overlaps(x: gpd.GeoSeries, y: gpd.GeoSeries) -> gpd.GeoDataFra
     # Compute pairwise overlap and report those with non-zero overlap
     print("Computing overlap of intersecting pairs")
     overlaps = []
-    for counter, (i, j) in enumerate(pairs, start=1):
-        print(f"[{len(pairs)}] {counter}", end="\r", flush=True)
+    for counter, (i, j) in enumerate(pairs):
+        _print_progress(counter, len(pairs))
         overlap = x.iloc[i].intersection(y.iloc[j])
         try:
             overlap = polygonize(overlap)
@@ -274,7 +291,7 @@ def resolve_self_overlaps(
     """
     fixed = {}
     for counter, row in enumerate(overlaps.to_dict(orient="records")):
-        print(f"[{len(overlaps) - 1}] {counter}", end="\r", flush=True)
+        _print_progress(counter, len(overlaps))
         gi = [row["i"], row["j"]]
         g = [fixed[i] if i in fixed else geoms[i] for i in gi]
         # Differemce overlap from each geometry
