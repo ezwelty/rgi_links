@@ -13,12 +13,21 @@ import shapely.geometry
 import shapely.ops
 
 
-def _show_progress(counter: int, n: int, interval: int = 10) -> None:
+def _print_progress(index: int, n: int, interval: int = 10) -> None:
     """
-    Just a print on screen to show progress
+    Print progress.
+
+    Parameters
+    ----------
+    index
+        Current index (0-based). Printed as a count (1-based).
+    n
+        Total count.
+    interval
+        How often to print. Last count (`n`) is always printed.
     """
-    if counter % interval == 0 or counter == n:
-        print(f"[{n}] {counter}", end="\r", flush=True)
+    if index % interval == 0 or index == (n - 1):
+        print(f"[{n}] {index + 1}", end="\r", flush=True)
 
 
 def load_rgi6_outlines(
@@ -178,7 +187,7 @@ def compute_self_overlaps(gs: gpd.GeoSeries) -> gpd.GeoDataFrame:
     print("Computing overlap of intersecting pairs")
     overlaps = []
     for counter, (i, j) in enumerate(pairs, start=1):
-        _show_progress(counter, len(pairs))
+        _print_progress(counter, len(pairs))
         if i != j:
             overlap = gs.iloc[i].intersection(gs.iloc[j])
             try:
@@ -227,8 +236,8 @@ def compute_cross_overlaps(x: gpd.GeoSeries, y: gpd.GeoSeries) -> gpd.GeoDataFra
     # Compute pairwise overlap and report those with non-zero overlap
     print("Computing overlap of intersecting pairs")
     overlaps = []
-    for counter, (i, j) in enumerate(pairs, start=1):
-        _show_progress(counter, len(pairs))
+    for counter, (i, j) in enumerate(pairs):
+        _print_progress(counter, len(pairs))
         overlap = x.iloc[i].intersection(y.iloc[j])
         try:
             overlap = polygonize(overlap)
@@ -281,8 +290,8 @@ def resolve_self_overlaps(
         Failed to resolve overlap
     """
     fixed = {}
-    for counter, row in enumerate(overlaps.to_dict(orient="records"), start=1):
-        _show_progress(counter, len(len(overlaps)))
+    for counter, row in enumerate(overlaps.to_dict(orient="records")):
+        _print_progress(counter, len(overlaps))
         gi = [row["i"], row["j"]]
         g = [fixed[i] if i in fixed else geoms[i] for i in gi]
         # Differemce overlap from each geometry
