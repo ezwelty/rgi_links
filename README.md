@@ -29,7 +29,7 @@ import helpers
 rgi6 = helpers.load_rgi6_outlines(path='nsidc0770_00.rgi60.complete.zip')
 rgi6.to_parquet('rgi6.parquet')
 
-rgi7 = helpers.load_rgi7_outlines(path='rgi7')
+rgi7 = helpers.load_rgi7_outlines(path='RGI2000-v7.0-G-global.zip')
 rgi7.to_parquet('rgi7.parquet')
 ```
 

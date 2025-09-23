@@ -56,55 +56,25 @@ def load_rgi6_outlines(
     return gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs=gdfs[0].crs)
 
 
-def load_rgi7_outlines(path: str = ".") -> gpd.GeoDataFrame:
+def load_rgi7_outlines(path: str = "RGI2000-v7.0-G-global.zip") -> gpd.GeoDataFrame:
     """
     Load all RGI7 outlines into a single dataframe.
 
     Parameters
     ----------
     path
-        Path to `*.tar.gz` files downloaded from
-        https://cluster.klima.uni-bremen.de/~fmaussion/misc/rgi7_data/l4_rgi7b0_tar.
-        Missing files are automatically downloaded.
+        Path to `RGI2000-v7.0-G-global.zip`.
+        Download manually from https://nsidc.org/data/nsidc-0770/versions/7
+        with a NASA Earthdata login.
     """
-    base_url = (
-        "https://cluster.klima.uni-bremen.de/~fmaussion/misc/rgi7_data/l4_rgi7b0_tar"
-    )
-    regions = [
-        "01_alaska",
-        "02_western_canada_usa",
-        "03_arctic_canada_north",
-        "04_arctic_canada_south",
-        "05_greenland_periphery",
-        "06_iceland",
-        "07_svalbard_jan_mayen",
-        "08_scandinavia",
-        "09_russian_arctic",
-        "10_asia_north",
-        "11_central_europe",
-        "12_caucasus_middle_east",
-        "13_asia_central",
-        "14_asia_south_west",
-        "15_asia_south_east",
-        "16_low_latitudes",
-        "17_southern_andes",
-        "18_new_zealand",
-        "19_subantarctic_antarctic_islands",
-    ]
     gdfs = []
-    for region in regions:
-        print(region)
-        stem = f"RGI2000-v7.0-G-{region}"
-        path: Path = Path(path)
-        Path(path).mkdir(parents=True, exist_ok=True)
-        filename = path / f"{stem}.tar.gz"
-        if not filename.exists:
-            url = f"{base_url}/{filename}"
-            urllib.request.urlretrieve(url, str(filename))
-        gdf = gpd.read_file(f"/vsitar/{filename}/{stem}/{stem}.shp")
-        # Reduce 3D coordinates to 2D
-        gdf.geometry = shapely.force_2d(gdf.geometry)
-        gdfs.append(gdf)
+    with zipfile.ZipFile(path) as parent_zip:
+        for child_name in parent_zip.namelist():
+            if not child_name.endswith(".zip"):
+                continue
+            print(child_name)
+            with parent_zip.open(child_name, "r") as child_zip:
+                gdfs.append(gpd.read_file(child_zip))
     return gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs=gdfs[0].crs)
 
 
